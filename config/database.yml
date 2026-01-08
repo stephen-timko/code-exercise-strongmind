@@ -1,0 +1,19 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  timeout: 5000
+  url: <%= ENV.fetch("DATABASE_URL") { "postgresql://postgres:postgres@localhost:5432/strongmind_development" } %>
+
+development:
+  <<: *default
+  database: strongmind_development
+
+test:
+  <<: *default
+  database: strongmind_test
+
+production:
+  <<: *default
+  database: strongmind_production
+  url: <%= ENV.fetch("DATABASE_URL") { "" } %>
