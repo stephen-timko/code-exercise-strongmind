@@ -1,6 +1,9 @@
 namespace :github do
   desc "Ingest GitHub events from the public events API"
   task ingest: :environment do
+    # Ensure all application code is loaded
+    Rails.application.eager_load! unless Rails.application.config.eager_load
+    
     puts "Starting GitHub events ingestion..."
     
     begin
