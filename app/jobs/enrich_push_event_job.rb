@@ -2,11 +2,11 @@ class EnrichPushEventJob < ApplicationJob
   queue_as :default
 
   # Retry on rate limit errors after delay
-  retry_on GitHubApiClient::RateLimitExceeded, wait: :exponentially_longer, attempts: 3
+  retry_on GitHubApiClient::RateLimitExceeded, wait: :polynomially_longer, attempts: 3
   # Retry on network errors
-  retry_on GitHubApiClient::NetworkError, wait: :exponentially_longer, attempts: 5
+  retry_on GitHubApiClient::NetworkError, wait: :polynomially_longer, attempts: 5
   # Retry on enrichment errors (transient failures)
-  retry_on EnrichmentService::EnrichmentError, wait: :exponentially_longer, attempts: 3
+  retry_on EnrichmentService::EnrichmentError, wait: :polynomially_longer, attempts: 3
   # Don't retry on record not found (PushEvent was deleted)
   discard_on ActiveRecord::RecordNotFound
 
