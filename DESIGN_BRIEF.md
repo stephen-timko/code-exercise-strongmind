@@ -2,14 +2,14 @@
 
 ## Problem Understanding
 
-This service addresses StrongMind's need for visibility into GitHub activity to support future analytics on repository usage and contributor behavior. The core challenge is building a reliable, unattended data pipeline that:
+This service provides visibility into GitHub activity to support analytics on repository usage and contributor behavior. The system implements a reliable, unattended data pipeline that:
 
 1. **Ingests** GitHub Push events from the public events API (unauthenticated, rate-limited)
 2. **Transforms** raw events into structured, queryable data
 3. **Enriches** events with related actor and repository metadata
 4. **Persists** data durably for future analysis
 
-The system must operate unattended, handle failures gracefully, and respect GitHub's strict rate limits (60 requests/hour unauthenticated). This is an **internal data pipeline**, not a user-facing product, which influences architectural decisions toward reliability and maintainability over feature richness.
+The system operates unattended, handles failures gracefully, and respects GitHub's rate limits (60 requests/hour unauthenticated). As an internal data pipeline, architectural decisions prioritize reliability and maintainability.
 
 ## Proposed Architecture
 
@@ -62,7 +62,7 @@ GitHub API → API Client → Ingestion Job → Parser → Database
 
 **4. Structured Tables vs JSON-only**
 - **Chosen**: Dual storage (raw JSONB + structured tables)
-- **Rationale**: JSONB provides flexibility for future fields, structured tables enable efficient queries without JSON parsing. Tradeoff: Some data duplication, but worth it for query performance.
+- **Rationale**: JSONB provides flexibility for future fields, structured tables enable efficient queries without JSON parsing. Tradeoff: Some data duplication, acceptable for query performance.
 
 ### Assumptions
 
@@ -81,15 +81,15 @@ GitHub API → API Client → Ingestion Job → Parser → Database
 **Approach**:
 1. **Header Tracking**: Monitor `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers
 2. **ETag Optimization**: Use conditional requests (`If-None-Match`) to avoid unnecessary data transfer when events haven't changed
-3. **Exponential Backoff**: Retry with increasing delays on rate limit errors (429, 403 with remaining=0)
+3. **Polynomial Backoff**: Retry with polynomially increasing delays on rate limit errors (429, 403 with remaining=0)
 4. **Pre-request Checks**: Verify rate limit status before making requests
 5. **Queue Management**: Process events in batches, respect rate limits between batches
 
 **Behavior Under Rate Limiting**:
-- Jobs retry with exponential backoff (up to 3 attempts)
-- System logs rate limit status clearly
-- No crash-loops: graceful degradation with retry logic
-- Rate limit info tracked and logged for observability
+- Jobs retry with polynomial backoff (polynomially increasing delays, up to 3 attempts)
+- System logs rate limit status for visibility
+- Graceful degradation with retry logic prevents crash loops
+- Rate limit information tracked and logged for observability
 
 ### Durability Approach
 
@@ -114,41 +114,41 @@ GitHub API → API Client → Ingestion Job → Parser → Database
 ## What I Intentionally Did Not Build
 
 **1. Real-time Processing**
-- Chose batch processing over streaming. Analytics workloads don't require real-time, and batch is simpler and more reliable.
+- Uses batch processing instead of streaming. Analytics workloads don't require real-time data, and batch processing is simpler and more reliable.
 
 **2. Complex Analytics Layer**
-- Focused on data ingestion and storage. Analytics queries are future work, not part of ingestion service scope.
+- Focused on data ingestion and storage. Analytics queries are outside the scope of this ingestion service.
 
 **3. User-facing API**
-- This is an internal service. No REST API for querying data (can be added later if needed).
+- Internal service only. No REST API for querying data (can be added later if needed).
 
 **4. Authentication/Authorization**
-- Single-tenant internal service. Security can be added at infrastructure level if needed.
+- Single-tenant internal service. Security can be handled at the infrastructure level if needed.
 
 **5. Horizontal Scaling**
-- Designed for single instance. Architecture supports scaling later (stateless jobs, shared database).
+- Designed for a single instance. Architecture supports scaling later (stateless jobs, shared database).
 
 **6. Advanced Monitoring Dashboards**
-- Basic logging and health checks sufficient. Can integrate with monitoring tools later.
+- Basic logging and health checks are sufficient. Can integrate with monitoring tools later.
 
 **7. Webhook Support**
-- Would require authentication. Polling is simpler and sufficient for requirements.
+- Would require authentication. Polling is simpler and meets current requirements.
 
 **8. Historical Backfill**
-- Assumes starting from current events. Backfill can be added as separate tool if needed.
+- Assumes starting from current events. Historical backfill can be implemented as a separate tool if needed.
 
 **9. Event Deduplication Beyond Database Constraints**
-- Rely on database unique constraints. More sophisticated deduplication not needed for current scale.
+- Relies on database unique constraints. More sophisticated deduplication is not needed for current scale.
 
 **10. Multi-environment Configuration Management**
-- Basic environment variables sufficient. Can add config validation and management later.
+- Basic environment variables are sufficient. Configuration validation and management can be added later.
 
-## Design Principles Applied
+## Design Principles
 
 1. **Extensibility First**: Architecture supports future features without rewrites
 2. **Fail Gracefully**: System continues operating despite individual failures
 3. **Observable**: Clear logging enables debugging and monitoring
 4. **Idempotent**: Safe to run multiple times, restart-friendly
-5. **Pragmatic**: Simple solutions over complex ones, but scalable when needed
+5. **Pragmatic**: Simple solutions over complex ones, scalable when needed
 
-This design prioritizes reliability, maintainability, and operational simplicity while providing a solid foundation for future analytics capabilities.
+This design prioritizes reliability, maintainability, and operational simplicity while providing a foundation for analytics capabilities.

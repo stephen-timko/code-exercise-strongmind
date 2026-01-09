@@ -1,6 +1,6 @@
 # StrongMind GitHub Events Ingestion Service
 
-A Rails API service that ingests GitHub Push events from the public events API, enriches them with related data, and stores them for future querying and analysis.
+A Rails API service that ingests GitHub Push events from the public events API, enriches them with actor and repository metadata, and stores them for querying and analysis.
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ This will:
 In a new terminal, run:
 
 ```bash
-docker compose run --rm web rails db:create db:migrate
+docker compose run --rm web bundle exec rails db:create db:migrate
 ```
 
 ### 3. Verify the system is running
@@ -48,13 +48,13 @@ To ingest GitHub events from the public events API:
 docker compose run --rm ingest
 ```
 
-This will:
-- Fetch events from `https://api.github.com/events`
-- Filter for PushEvent type only
-- Store raw events in the `github_events` table
-- Parse and store structured PushEvent data in the `push_events` table
-- Handle rate limits gracefully (60 requests/hour unauthenticated)
-- Use ETag-based conditional requests to reduce bandwidth
+This task:
+- Fetches events from `https://api.github.com/events`
+- Filters for PushEvent type only
+- Stores raw events in the `github_events` table
+- Parses and stores structured PushEvent data in the `push_events` table
+- Respects rate limits (60 requests/hour unauthenticated)
+- Uses ETag-based conditional requests to minimize bandwidth usage
 
 **Expected output:**
 ```
@@ -65,28 +65,28 @@ Rate limit remaining: 45/60
 Ingestion completed successfully
 ```
 
-**Note:** The ingestion respects GitHub's rate limits. If you hit the limit, the job will retry with exponential backoff.
+**Note:** The ingestion respects GitHub's rate limits. If you hit the limit, the job will retry with polynomially increasing delays.
 
 ## How to Run Enrichment
 
 To enrich pending PushEvents with actor and repository data:
 
 ```bash
-docker compose run --rm web rake github:enrich
+docker compose run --rm web bundle exec rake github:enrich
 ```
 
 Or with a custom batch size:
 
 ```bash
-BATCH_SIZE=20 docker compose run --rm web rake github:enrich
+BATCH_SIZE=20 docker compose run --rm web bundle exec rake github:enrich
 ```
 
-This will:
-- Find pending PushEvents (up to the batch size, default: 10)
-- Fetch actor and repository data from GitHub API
-- Cache enriched data to avoid unnecessary refetches
-- Link enriched data to PushEvents
-- Update enrichment status
+This task:
+- Finds pending PushEvents (up to the batch size, default: 10)
+- Fetches actor and repository data from GitHub API
+- Caches enriched data to avoid unnecessary refetches
+- Links enriched data to PushEvents
+- Updates enrichment status
 
 **Expected output:**
 ```
@@ -105,28 +105,26 @@ Enrichment completed: 5 succeeded, 0 failed
 
 ### 1. Check Logs
 
-View the application logs to see ingestion and enrichment activity:
+View application logs to monitor ingestion and enrichment activity:
 
 ```bash
 docker compose logs -f web
 ```
 
-**Expected log patterns:**
-
-**During ingestion:**
+**Log patterns during ingestion:**
 ```
 INFO -- : Ingesting 30 events from GitHub API. Rate limit: 45/60
 INFO -- : Ingestion complete: 30 events ingested, 5 PushEvents created, 0 errors
 INFO -- : Rate limit remaining: 45/60
 ```
 
-**During enrichment:**
+**Log patterns during enrichment:**
 ```
 INFO -- : Enriching PushEvent 1 (push_id: 12345)
 INFO -- : Successfully enriched PushEvent 1 (actor: true, repository: true)
 ```
 
-**On errors:**
+**Log patterns on errors:**
 ```
 ERROR -- : Failed to parse PushEvent from event 12345: Missing required fields: push_id
 ERROR -- : Failed to enrich PushEvent 2: Network error: Connection timeout
@@ -137,24 +135,24 @@ ERROR -- : Failed to enrich PushEvent 2: Network error: Connection timeout
 Connect to the database and verify data:
 
 ```bash
-docker compose run --rm web rails dbconsole
+docker compose run --rm web bundle exec rails dbconsole
 ```
 
-**Check raw events:**
+**Raw events:**
 ```sql
 SELECT COUNT(*) FROM github_events;
 SELECT event_type, COUNT(*) FROM github_events GROUP BY event_type;
 SELECT * FROM github_events WHERE event_type = 'PushEvent' LIMIT 5;
 ```
 
-**Check structured PushEvents:**
+**Structured PushEvents:**
 ```sql
 SELECT COUNT(*) FROM push_events;
 SELECT repository_id, COUNT(*) FROM push_events GROUP BY repository_id;
 SELECT * FROM push_events LIMIT 5;
 ```
 
-**Check enrichment data:**
+**Enrichment data:**
 ```sql
 SELECT COUNT(*) FROM actors;
 SELECT COUNT(*) FROM repositories;
@@ -176,7 +174,7 @@ LIMIT 10;
 Get a quick overview of system statistics:
 
 ```bash
-docker compose run --rm web rake github:stats
+docker compose run --rm web bundle exec rake github:stats
 ```
 
 **Expected output:**
@@ -203,23 +201,16 @@ Enrichment Rate: 80.0%
 ==========================================
 ```
 
-### 4. Expected Timeline
-
-- **First ingestion:** Should see events within 1-2 minutes
-- **PushEvents created:** Immediately after ingestion completes
-- **Enrichment:** Should complete within 30 seconds for a batch of 10 events
-- **Rate limits:** System will wait and retry if rate limit is hit (typically resets every hour)
-
-### 5. Verification Checklist
+### 4. Verification Checklist
 
 - [ ] Health endpoint returns `{"status":"ok"}`
 - [ ] Ingestion completes without errors
 - [ ] `github_events` table has records
-- [ ] `push_events` table has records with `event_type = 'PushEvent'`
+- [ ] `push_events` table has records
 - [ ] Logs show successful ingestion messages
 - [ ] Enrichment completes successfully
 - [ ] `actors` and `repositories` tables have records
-- [ ] PushEvents show `enrichment_status = 'completed'` after enrichment
+- [ ] PushEvents have `enrichment_status = 'completed'` after enrichment
 - [ ] Stats task shows expected counts
 
 ## Project Structure
@@ -246,13 +237,13 @@ Enrichment Rate: 80.0%
 ### Running Rails console
 
 ```bash
-docker compose run --rm web rails console
+docker compose run --rm web bundle exec rails console
 ```
 
 ### Running database migrations
 
 ```bash
-docker compose run --rm web rails db:migrate
+docker compose run --rm web bundle exec rails db:migrate
 ```
 
 ### Viewing logs
@@ -267,14 +258,14 @@ docker compose logs -f web
 docker compose run --rm test
 ```
 
-This will:
-- Run RSpec test suite
-- Use the test database (separate from development)
-- Execute all tests and report results
+This command:
+- Runs the RSpec test suite
+- Uses the test database (separate from development)
+- Executes all tests and reports results
 
 ## Technology Stack
 
-- **Ruby**: 3.2.0
+- **Ruby**: ~> 3.2.0
 - **Rails**: 7.1 (API mode)
 - **PostgreSQL**: 15
 - **Sidekiq**: Background job processing
@@ -292,17 +283,17 @@ This will:
 
 ## Architecture
 
-The system follows a service-oriented architecture:
+The system uses a service-oriented architecture:
 
-1. **Ingestion**: `IngestGitHubEventsJob` fetches events and stores raw + structured data
+1. **Ingestion**: `IngestGitHubEventsJob` fetches events and stores raw and structured data
 2. **Parsing**: `PushEventParser` extracts structured fields from raw event payloads
-3. **Enrichment**: `EnrichmentService` fetches and caches actor/repository data
+3. **Enrichment**: `EnrichmentService` fetches and caches actor and repository data
 4. **Storage**: PostgreSQL with JSONB for raw data, structured tables for querying
 
 ## Rate Limiting Strategy
 
 - Tracks `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers
-- Exponential backoff on rate limit errors
+- Polynomial backoff on rate limit errors (polynomially increasing delays)
 - ETag-based conditional requests to minimize API calls
 - Queue management to prevent exceeding limits
 
@@ -310,14 +301,14 @@ The system follows a service-oriented architecture:
 
 **No events ingested:**
 - Check rate limit status in logs
-- Verify GitHub API is accessible
+- Verify GitHub API accessibility
 - Check network connectivity
 
-**Enrichment failing:**
+**Enrichment failures:**
 - Verify actor/repository URLs in event payloads
 - Check rate limit status
-- Review error logs for specific failures
+- Review error logs for specific failure messages
 
 **Database connection errors:**
-- Ensure database service is running: `docker compose ps`
+- Verify database service is running: `docker compose ps`
 - Check database health: `docker compose exec db pg_isready -U postgres`
