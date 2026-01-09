@@ -53,6 +53,26 @@ services:
     stdin_open: true
     tty: true
 
+  ingest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: strongmind_ingest
+    volumes:
+      - .:/app
+      - bundle_cache:/usr/local/bundle
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/strongmind_development
+      REDIS_URL: redis://redis:6379/0
+      RAILS_ENV: development
+      RAILS_LOG_TO_STDOUT: "true"
+    command: bundle exec rake github:ingest
+
 volumes:
   postgres_data:
   bundle_cache:
