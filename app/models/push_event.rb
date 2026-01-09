@@ -22,7 +22,8 @@ class PushEvent < ApplicationRecord
   validates :push_id, presence: true, uniqueness: true
   validates :ref, presence: true
   validates :head, presence: true
-  validates :before, presence: true
+  # before can be empty string for initial commits, but must not be nil
+  validates :before, exclusion: { in: [nil] }
   validates :enrichment_status, inclusion: { in: ENRICHMENT_STATUSES }
 
   # Scopes

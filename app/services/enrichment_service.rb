@@ -111,7 +111,6 @@ class EnrichmentService
     repository_id_from_payload = extract_repository_id(repository_url)
 
     # Check if repository is already cached and fresh (if we have ID)
-    repository = nil
     if repository_id_from_payload.present?
       repository = Repository.find_by(github_id: repository_id_from_payload)
       if repository&.cache_fresh?(ttl: @cache_ttl)
@@ -119,11 +118,6 @@ class EnrichmentService
         @push_event.update!(enriched_repository: repository)
         return true
       end
-    end
-    if repository&.cache_fresh?(ttl: @cache_ttl)
-      Rails.logger.debug("Repository #{repository_id} cache is fresh, skipping fetch")
-      @push_event.update!(enriched_repository: repository)
-      return true
     end
 
     # Fetch repository data from GitHub
