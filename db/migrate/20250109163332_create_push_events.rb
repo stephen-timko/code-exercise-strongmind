@@ -8,7 +8,7 @@ class CreatePushEvents < ActiveRecord::Migration[7.1]
       t.string :head, null: false
       t.string :before, null: false
       t.references :actor, null: true, foreign_key: true, index: true
-      t.references :repository, null: true, foreign_key: true, index: true
+      t.references :enriched_repository, null: true, foreign_key: { to_table: :repositories }, index: true
       t.string :enrichment_status, default: 'pending', index: true
 
       t.timestamps
