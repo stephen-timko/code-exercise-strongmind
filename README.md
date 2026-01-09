@@ -264,8 +264,13 @@ docker compose logs -f web
 ### Running tests (if implemented)
 
 ```bash
-docker compose run --rm web rake test
+docker compose run --rm test
 ```
+
+This will:
+- Run RSpec test suite
+- Use the test database (separate from development)
+- Execute all tests and report results
 
 ## Technology Stack
 
