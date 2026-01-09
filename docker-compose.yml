@@ -34,7 +34,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: strongmind_web
-    command: bundle exec rails server -b 0.0.0.0 -p 3000
+    working_dir: /app
+    command: ["sh", "-c", "cd /app && bin/rails server -b 0.0.0.0 -p 3000"]
     volumes:
       - .:/app
       - bundle_cache:/usr/local/bundle
@@ -50,8 +51,6 @@ services:
       REDIS_URL: redis://redis:6379/0
       RAILS_ENV: development
       RAILS_LOG_TO_STDOUT: "true"
-    stdin_open: true
-    tty: true
 
   ingest:
     build:
