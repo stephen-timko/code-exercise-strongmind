@@ -1,6 +1,13 @@
 namespace :github do
   desc "Ingest GitHub events from the public events API"
   task ingest: :environment do
+    # Ensure services are loaded before jobs to avoid constant resolution issues during eager loading
+    # Reference service classes to trigger Zeitwerk autoloading in the correct order
+    # This ensures exception classes are defined before jobs try to reference them
+    GitHubApiClient
+    EnrichmentService
+    PushEventParser
+    
     # Ensure all application code is loaded
     Rails.application.eager_load! unless Rails.application.config.eager_load
     
