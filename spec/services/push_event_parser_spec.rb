@@ -46,10 +46,11 @@ RSpec.describe PushEventParser do
       end
     end
 
-    context 'with missing repository full_name' do
+    context 'with missing repository full_name and name' do
       let(:payload_without_full_name) do
         valid_payload.tap do |p|
           p['repo'].delete('full_name')
+          p['repo'].delete('name')
           p['repo']['id'] = 456
         end
       end

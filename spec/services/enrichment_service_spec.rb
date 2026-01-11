@@ -115,6 +115,8 @@ RSpec.describe EnrichmentService do
       before do
         stub_request(:get, actor_url)
           .to_return(status: 200, body: actor_data.to_json)
+        stub_request(:get, repo_url)
+          .to_return(status: 200, body: repo_data.to_json)
       end
 
       it 'refetches stale data' do
