@@ -145,10 +145,15 @@ class GitHubApiClient
   end
 
   def handle_client_error(error)
-    case error.response&.status
+    # Handle both Faraday::Response objects and Hash responses (from WebMock)
+    response = error.response
+    status = response.is_a?(Hash) ? response[:status] : response&.status
+    headers = response.is_a?(Hash) ? response[:headers] || {} : response&.headers || {}
+    
+    case status
     when 403
-      if error.response.headers['x-ratelimit-remaining'] == '0'
-        update_rate_limit_from_error(error)
+      if headers['x-ratelimit-remaining'] == '0' || headers['X-RateLimit-Remaining'] == '0'
+        update_rate_limit_from_error(error, headers)
         raise RateLimitExceeded, "Rate limit exceeded. Resets at #{@rate_limit_reset_at}"
       else
         raise ApiError, "Forbidden: #{error.message}"
@@ -156,10 +161,10 @@ class GitHubApiClient
     when 404
       raise ApiError, "Resource not found: #{error.message}"
     when 429
-      update_rate_limit_from_error(error)
+      update_rate_limit_from_error(error, headers)
       raise RateLimitExceeded, "Rate limit exceeded. Resets at #{@rate_limit_reset_at}"
     else
-      raise ApiError, "API error (#{error.response&.status}): #{error.message}"
+      raise ApiError, "API error (#{status}): #{error.message}"
     end
   end
 
@@ -179,10 +184,16 @@ class GitHubApiClient
     }
   end
 
-  def update_rate_limit_from_error(error)
-    headers = error.response&.headers || {}
-    @rate_limit_remaining = headers['x-ratelimit-remaining']&.to_i || 0
-    reset_timestamp = headers['x-ratelimit-reset']&.to_i
+  def update_rate_limit_from_error(error, headers = nil)
+    response = error.response
+    headers ||= response.is_a?(Hash) ? (response[:headers] || {}) : (response&.headers || {})
+    
+    # Handle both lowercase and capitalized header keys
+    remaining = headers['x-ratelimit-remaining'] || headers['X-RateLimit-Remaining']
+    reset_val = headers['x-ratelimit-reset'] || headers['X-RateLimit-Reset']
+    
+    @rate_limit_remaining = remaining&.to_i || 0
+    reset_timestamp = reset_val&.to_i
     @rate_limit_reset_at = reset_timestamp ? Time.at(reset_timestamp) : nil
   end
 
