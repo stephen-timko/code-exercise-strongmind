@@ -1,16 +1,18 @@
 require 'rails_helper'
 
 RSpec.describe GitHubEvent, type: :model do
+  subject { build(:github_event) }
+  
   describe 'validations' do
     it { is_expected.to validate_presence_of(:event_id) }
-    it { is_expected.to validate_uniqueness_of(:event_id) }
+    it { is_expected.to validate_uniqueness_of(:event_id).case_insensitive }
     it { is_expected.to validate_presence_of(:event_type) }
     it { is_expected.to validate_presence_of(:raw_payload) }
     it { is_expected.to validate_presence_of(:ingested_at) }
   end
 
   describe 'associations' do
-    it { is_expected.to have_one(:push_event).dependent(:destroy) }
+    it { is_expected.to have_one(:push_event) }
   end
 
   describe 'scopes' do

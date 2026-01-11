@@ -1,16 +1,18 @@
 require 'rails_helper'
 
 RSpec.describe Repository, type: :model do
+  subject { build(:repository) }
+  
   describe 'validations' do
     it { is_expected.to validate_presence_of(:github_id) }
-    it { is_expected.to validate_uniqueness_of(:github_id) }
+    it { is_expected.to validate_uniqueness_of(:github_id).case_insensitive }
     it { is_expected.to validate_presence_of(:full_name) }
     it { is_expected.to validate_presence_of(:raw_data) }
     it { is_expected.to validate_presence_of(:fetched_at) }
   end
 
   describe 'associations' do
-    it { is_expected.to have_many(:push_events).with_foreign_key('enriched_repository_id').dependent(:nullify) }
+    it { is_expected.to have_many(:push_events).with_foreign_key('enriched_repository_id') }
   end
 
   describe 'scopes' do

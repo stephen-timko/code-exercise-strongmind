@@ -1,10 +1,12 @@
 require 'rails_helper'
 
 RSpec.describe PushEvent, type: :model do
+  subject { build(:push_event) }
+  
   describe 'validations' do
     it { is_expected.to validate_presence_of(:repository_id) }
     it { is_expected.to validate_presence_of(:push_id) }
-    it { is_expected.to validate_uniqueness_of(:push_id) }
+    it { is_expected.to validate_uniqueness_of(:push_id).case_insensitive }
     it { is_expected.to validate_presence_of(:ref) }
     it { is_expected.to validate_presence_of(:head) }
     it { is_expected.to validate_inclusion_of(:enrichment_status).in_array(PushEvent::ENRICHMENT_STATUSES) }
@@ -15,15 +17,16 @@ RSpec.describe PushEvent, type: :model do
     end
 
     it 'does not allow nil for before field' do
-      push_event = build(:push_event, before: nil)
+      push_event = build(:push_event)
+      push_event.before = nil  # Set directly after build to override factory
       expect(push_event).not_to be_valid
     end
   end
 
   describe 'associations' do
     it { is_expected.to belong_to(:github_event) }
-    it { is_expected.to belong_to(:actor).optional }
-    it { is_expected.to belong_to(:enriched_repository).optional }
+    it { is_expected.to belong_to(:actor).optional(true) }
+    it { is_expected.to belong_to(:enriched_repository).class_name('Repository').optional(true) }
   end
 
   describe 'scopes' do
