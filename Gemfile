@@ -22,6 +22,9 @@ gem 'redis', '~> 5.0'
 gem 'faraday', '~> 2.0'
 gem 'faraday-retry', '~> 2.0'
 
+# Object storage for raw payloads
+gem 'aws-sdk-s3', '~> 1.0'
+
 # Utilities
 gem 'bootsnap', '>= 1.4.4', require: false
 gem 'tzinfo-data', platforms: [:mingw, :mswin, :x64_mingw, :jruby]
