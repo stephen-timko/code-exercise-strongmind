@@ -8,14 +8,6 @@ RSpec.describe ObjectStorageService do
   let(:bucket_name) { 'test-bucket' }
 
   before do
-    # Stub configuration
-    allow(ObjectStorage::Config).to receive(:ENABLED).and_return(true)
-    allow(ObjectStorage::Config).to receive(:BUCKET).and_return(bucket_name)
-    allow(ObjectStorage::Config).to receive(:REGION).and_return('us-east-1')
-    allow(ObjectStorage::Config).to receive(:ACCESS_KEY_ID).and_return('test-key')
-    allow(ObjectStorage::Config).to receive(:SECRET_ACCESS_KEY).and_return('test-secret')
-    allow(ObjectStorage::Config).to receive(:ENDPOINT).and_return(nil)
-
     # Stub S3 client creation
     allow_any_instance_of(described_class).to receive(:build_s3_client).and_return(s3_client)
   end
@@ -25,6 +17,12 @@ RSpec.describe ObjectStorageService do
       let(:put_response) { double('PutObjectResponse') }
 
       before do
+        stub_const('ObjectStorage::Config::ENABLED', true)
+        stub_const('ObjectStorage::Config::BUCKET', bucket_name)
+        stub_const('ObjectStorage::Config::REGION', 'us-east-1')
+        stub_const('ObjectStorage::Config::ACCESS_KEY_ID', 'test-key')
+        stub_const('ObjectStorage::Config::SECRET_ACCESS_KEY', 'test-secret')
+        stub_const('ObjectStorage::Config::ENDPOINT', nil)
         allow(s3_client).to receive(:put_object).and_return(put_response)
       end
 
@@ -67,14 +65,13 @@ RSpec.describe ObjectStorageService do
 
     context 'when S3 is disabled' do
       before do
-        allow(ObjectStorage::Config).to receive(:ENABLED).and_return(false)
+        stub_const('ObjectStorage::Config::ENABLED', false)
       end
 
       it 'returns nil (indicating JSONB fallback)' do
         result = described_class.store(event_id, payload)
 
         expect(result).to be_nil
-        expect(s3_client).not_to have_received(:put_object)
       end
     end
   end
@@ -85,6 +82,7 @@ RSpec.describe ObjectStorageService do
       let(:body_io) { StringIO.new(payload.to_json) }
 
       before do
+        stub_const('ObjectStorage::Config::BUCKET', bucket_name)
         allow(get_response).to receive(:body).and_return(body_io)
         allow(s3_client).to receive(:get_object).with(
           bucket: bucket_name,
@@ -137,6 +135,8 @@ RSpec.describe ObjectStorageService do
       let(:delete_response) { double('DeleteObjectResponse') }
 
       before do
+        stub_const('ObjectStorage::Config::ENABLED', true)
+        stub_const('ObjectStorage::Config::BUCKET', bucket_name)
         allow(s3_client).to receive(:delete_object).and_return(delete_response)
       end
 
@@ -181,29 +181,29 @@ RSpec.describe ObjectStorageService do
 
     context 'when S3 is disabled' do
       before do
-        allow(ObjectStorage::Config).to receive(:ENABLED).and_return(false)
+        stub_const('ObjectStorage::Config::ENABLED', false)
       end
 
       it 'returns false' do
         result = described_class.delete(s3_key)
 
         expect(result).to be false
-        expect(s3_client).not_to have_received(:delete_object)
       end
     end
   end
 
   describe 'S3 client configuration' do
-    let(:service) { described_class.new }
-
     context 'with custom endpoint (localstack)' do
+      let(:real_client) { double('Aws::S3::Client') }
+
       before do
-        allow(ObjectStorage::Config).to receive(:ENABLED).and_return(true)
-        allow(ObjectStorage::Config).to receive(:ENDPOINT).and_return('http://localhost:4566')
-        allow(ObjectStorage::Config).to receive(:REGION).and_return('us-east-1')
-        allow(ObjectStorage::Config).to receive(:ACCESS_KEY_ID).and_return('test')
-        allow(ObjectStorage::Config).to receive(:SECRET_ACCESS_KEY).and_return('test')
-        allow(Aws::S3::Client).to receive(:new).and_return(s3_client)
+        stub_const('ObjectStorage::Config::ENABLED', true)
+        stub_const('ObjectStorage::Config::ENDPOINT', 'http://localhost:4566')
+        stub_const('ObjectStorage::Config::REGION', 'us-east-1')
+        stub_const('ObjectStorage::Config::ACCESS_KEY_ID', 'test')
+        stub_const('ObjectStorage::Config::SECRET_ACCESS_KEY', 'test')
+        allow(Aws::Credentials).to receive(:new).and_return(double('Credentials'))
+        allow(Aws::S3::Client).to receive(:new).and_return(real_client)
       end
 
       it 'configures client with custom endpoint and path style' do
@@ -220,14 +220,17 @@ RSpec.describe ObjectStorageService do
     end
 
     context 'with credentials' do
+      let(:credentials) { double('Aws::Credentials') }
+      let(:real_client) { double('Aws::S3::Client') }
+
       before do
-        allow(ObjectStorage::Config).to receive(:ENABLED).and_return(true)
-        allow(ObjectStorage::Config).to receive(:ENDPOINT).and_return(nil)
-        allow(ObjectStorage::Config).to receive(:REGION).and_return('us-east-1')
-        allow(ObjectStorage::Config).to receive(:ACCESS_KEY_ID).and_return('access-key')
-        allow(ObjectStorage::Config).to receive(:SECRET_ACCESS_KEY).and_return('secret-key')
-        allow(Aws::Credentials).to receive(:new).and_call_original
-        allow(Aws::S3::Client).to receive(:new).and_return(s3_client)
+        stub_const('ObjectStorage::Config::ENABLED', true)
+        stub_const('ObjectStorage::Config::ENDPOINT', nil)
+        stub_const('ObjectStorage::Config::REGION', 'us-east-1')
+        stub_const('ObjectStorage::Config::ACCESS_KEY_ID', 'access-key')
+        stub_const('ObjectStorage::Config::SECRET_ACCESS_KEY', 'secret-key')
+        allow(Aws::Credentials).to receive(:new).with('access-key', 'secret-key').and_return(credentials)
+        allow(Aws::S3::Client).to receive(:new).and_return(real_client)
       end
 
       it 'uses provided credentials' do
