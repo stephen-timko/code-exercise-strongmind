@@ -14,8 +14,15 @@ namespace :github do
     puts "Starting GitHub events ingestion..."
     
     begin
+      # Retrieve last ETag to avoid unnecessary polling
+      last_etag = JobState.get('github_events_etag')
+      
       # Run ingestion job synchronously for rake task
-      IngestGitHubEventsJob.new.perform
+      etag = IngestGitHubEventsJob.new.perform(etag: last_etag)
+      
+      # Store ETag for next run
+      JobState.set('github_events_etag', etag) if etag
+      
       puts "Ingestion completed successfully"
     rescue StandardError => e
       puts "Ingestion failed: #{e.message}"
