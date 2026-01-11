@@ -1,6 +1,8 @@
 require 'rails_helper'
 
 RSpec.describe ObjectStorageService do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:event_id) { '12345' }
   let(:payload) { { 'id' => event_id, 'type' => 'PushEvent', 'actor' => { 'login' => 'testuser' } } }
   let(:s3_key) { "events/#{Time.current.strftime('%Y/%m/%d')}/#{event_id}.json" }
@@ -82,6 +84,7 @@ RSpec.describe ObjectStorageService do
       let(:body_io) { StringIO.new(payload.to_json) }
 
       before do
+        stub_const('ObjectStorage::Config::ENABLED', true)
         stub_const('ObjectStorage::Config::BUCKET', bucket_name)
         allow(get_response).to receive(:body).and_return(body_io)
         allow(s3_client).to receive(:get_object).with(
@@ -103,6 +106,8 @@ RSpec.describe ObjectStorageService do
 
     context 'with non-existent key' do
       before do
+        stub_const('ObjectStorage::Config::ENABLED', true)
+        stub_const('ObjectStorage::Config::BUCKET', bucket_name)
         allow(s3_client).to receive(:get_object).and_raise(
           Aws::S3::Errors::NoSuchKey.new(nil, 'The specified key does not exist.')
         )
@@ -117,6 +122,8 @@ RSpec.describe ObjectStorageService do
 
     context 'with S3 service error' do
       before do
+        stub_const('ObjectStorage::Config::ENABLED', true)
+        stub_const('ObjectStorage::Config::BUCKET', bucket_name)
         allow(s3_client).to receive(:get_object).and_raise(
           Aws::S3::Errors::ServiceError.new(nil, 'Access Denied')
         )
@@ -204,6 +211,7 @@ RSpec.describe ObjectStorageService do
         stub_const('ObjectStorage::Config::SECRET_ACCESS_KEY', 'test')
         allow(Aws::Credentials).to receive(:new).and_return(double('Credentials'))
         allow(Aws::S3::Client).to receive(:new).and_return(real_client)
+        allow_any_instance_of(described_class).to receive(:build_s3_client).and_call_original
       end
 
       it 'configures client with custom endpoint and path style' do
@@ -231,6 +239,7 @@ RSpec.describe ObjectStorageService do
         stub_const('ObjectStorage::Config::SECRET_ACCESS_KEY', 'secret-key')
         allow(Aws::Credentials).to receive(:new).with('access-key', 'secret-key').and_return(credentials)
         allow(Aws::S3::Client).to receive(:new).and_return(real_client)
+        allow_any_instance_of(described_class).to receive(:build_s3_client).and_call_original
       end
 
       it 'uses provided credentials' do
