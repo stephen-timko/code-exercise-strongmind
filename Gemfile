@@ -35,6 +35,7 @@ group :development, :test do
   gem 'factory_bot_rails', '~> 6.2'
   gem 'faker', '~> 3.2'
   gem 'webmock', '~> 3.18'
+  gem 'shoulda-matchers', '~> 6.3'
 end
 
 group :development do
