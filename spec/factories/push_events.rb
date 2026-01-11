@@ -5,8 +5,12 @@ FactoryBot.define do
     push_id { Faker::Number.unique.number(digits: 10).to_s }
     ref { 'refs/heads/main' }
     head { Faker::Crypto.sha256 }
-    before { Faker::Crypto.sha256 }
     enrichment_status { 'pending' }
+    
+    # Use after(:build) for 'before' field since it's a reserved keyword
+    after(:build) do |push_event|
+      push_event.before = Faker::Crypto.sha256 if push_event.before.blank?
+    end
 
     trait :enriched do
       enrichment_status { 'completed' }
