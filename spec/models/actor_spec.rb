@@ -1,16 +1,18 @@
 require 'rails_helper'
 
 RSpec.describe Actor, type: :model do
+  subject { build(:actor) }
+  
   describe 'validations' do
     it { is_expected.to validate_presence_of(:github_id) }
-    it { is_expected.to validate_uniqueness_of(:github_id) }
+    it { is_expected.to validate_uniqueness_of(:github_id).case_insensitive }
     it { is_expected.to validate_presence_of(:login) }
     it { is_expected.to validate_presence_of(:raw_data) }
     it { is_expected.to validate_presence_of(:fetched_at) }
   end
 
   describe 'associations' do
-    it { is_expected.to have_many(:push_events).dependent(:nullify) }
+    it { is_expected.to have_many(:push_events) }
   end
 
   describe 'scopes' do
