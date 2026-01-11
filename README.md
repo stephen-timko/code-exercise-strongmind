@@ -222,11 +222,16 @@ Enrichment Rate: 80.0%
 │   ├── jobs/            # Background jobs (ingestion, enrichment)
 │   ├── models/          # ActiveRecord models
 │   └── services/        # Service classes (API client, parser, enrichment)
+├── bin/                 # Executable scripts (rails binstub)
 ├── config/              # Rails configuration
 ├── db/
 │   └── migrate/         # Database migrations
 ├── lib/
 │   └── tasks/           # Rake tasks (ingest, enrich, stats)
+├── log/                 # Application logs (ignored in git)
+├── spec/                # RSpec test files
+├── storage/             # Active Storage files (ignored in git)
+├── tmp/                 # Temporary files (ignored in git)
 ├── docker-compose.yml   # Docker Compose configuration
 ├── Dockerfile          # Rails application Docker image
 └── README.md           # This file

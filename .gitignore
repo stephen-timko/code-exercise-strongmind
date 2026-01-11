@@ -9,14 +9,24 @@
 
 # Ignore all logfiles and tempfiles.
 /log/*
-/tmp/*
 !/log/.keep
-!/tmp/.keep
 
-# Ignore pidfiles, but keep the directory.
-/tmp/pids/*
+# Ignore all temp files (recursive)
+/tmp/*
+!/tmp/.keep
 !/tmp/pids/
 !/tmp/pids/.keep
+!/tmp/storage/
+!/tmp/storage/.keep
+
+# Ignore pid files specifically
+*.pid
+
+# Ignore bootsnap cache
+/tmp/cache/
+/tmp/restart.txt
+/tmp/sockets/
+/tmp/local_secret.txt
 
 # Ignore uploaded files in development.
 /storage/*
