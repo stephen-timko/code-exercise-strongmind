@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2025_01_09_163332) do
+ActiveRecord::Schema[7.1].define(version: 2026_01_11_194044) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -30,14 +30,16 @@ ActiveRecord::Schema[7.1].define(version: 2025_01_09_163332) do
   create_table "github_events", force: :cascade do |t|
     t.string "event_id", null: false
     t.string "event_type", null: false
-    t.jsonb "raw_payload", null: false
+    t.jsonb "raw_payload"
     t.datetime "ingested_at", precision: nil, null: false
     t.datetime "processed_at", precision: nil
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "s3_key"
     t.index ["event_id"], name: "index_github_events_on_event_id", unique: true
     t.index ["event_type"], name: "index_github_events_on_event_type"
     t.index ["raw_payload"], name: "index_github_events_on_raw_payload", using: :gin
+    t.index ["s3_key"], name: "index_github_events_on_s3_key"
   end
 
   create_table "push_events", force: :cascade do |t|
