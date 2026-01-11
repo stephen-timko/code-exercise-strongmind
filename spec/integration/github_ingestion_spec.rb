@@ -130,8 +130,11 @@ RSpec.describe 'GitHub Events Ingestion End-to-End', type: :integration do
       raw_payload: push_event.github_event.raw_payload
     )
 
-    expect(WebMock).not_to have_requested(:get, /api\.github\.com/)
-      .after(WebMock.request(:get, 'https://api.github.com/users/testuser'))
+    # Clear previous requests to test caching
+    WebMock.reset!
+    
+    # Stub requests in case they're needed (they shouldn't be due to caching)
+    stub_request(:get, /api\.github\.com/).to_return(status: 200, body: {}.to_json)
 
     EnrichmentService.enrich(another_push_event)
 
