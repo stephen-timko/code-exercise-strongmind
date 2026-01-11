@@ -73,3 +73,6 @@ node_modules/
 
 # Ignore application config with secrets
 /config/application.yml
+
+# RSpec example status persistence file
+spec/examples.txt
