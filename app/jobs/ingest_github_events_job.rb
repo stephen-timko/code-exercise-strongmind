@@ -71,9 +71,11 @@ class IngestGitHubEventsJob < ApplicationJob
 
     github_event.assign_attributes(
       event_type: event_data['type'] || 'Unknown',
-      raw_payload: event_data,
       ingested_at: Time.current
     )
+    
+    # Store payload (in S3 if enabled, otherwise in JSONB)
+    github_event.store_payload(event_data)
 
     if github_event.save
       github_event
