@@ -1,4 +1,4 @@
-class AddS3KeyToGithubEvents < ActiveRecord::Migration[7.1]
+class AddS3KeyToGitHubEvents < ActiveRecord::Migration[7.1]
   def change
     add_column :github_events, :s3_key, :string, null: true, index: true
     # Make raw_payload nullable when S3 is used

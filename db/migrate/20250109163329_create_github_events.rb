@@ -1,4 +1,4 @@
-class CreateGithubEvents < ActiveRecord::Migration[7.1]
+class CreateGitHubEvents < ActiveRecord::Migration[7.1]
   def change
     create_table :github_events do |t|
       t.string :event_id, null: false, index: { unique: true }
