@@ -110,14 +110,19 @@ RSpec.describe EnrichPushEventJob, type: :job do
       end
 
       it 'marks event as failed' do
-        described_class.new.perform(push_event.id)
+        begin
+          described_class.new.perform(push_event.id)
+        rescue EnrichmentService::EnrichmentError
+          # Expected - job raises error on failure
+        end
 
         push_event.reload
         expect(push_event.enrichment_status).to eq('failed')
       end
 
-      it 'does not raise error' do
-        expect { described_class.new.perform(push_event.id) }.not_to raise_error
+      it 'raises EnrichmentError for retry' do
+        expect { described_class.new.perform(push_event.id) }
+          .to raise_error(EnrichmentService::EnrichmentError)
       end
     end
 
@@ -127,9 +132,9 @@ RSpec.describe EnrichPushEventJob, type: :job do
         stub_request(:get, repo_url).to_timeout
       end
 
-      it 'raises NetworkError for retry' do
+      it 'raises EnrichmentError for retry' do
         expect { described_class.new.perform(push_event.id) }
-          .to raise_error(GitHubApiClient::NetworkError)
+          .to raise_error(EnrichmentService::EnrichmentError)
       end
     end
 
@@ -145,9 +150,9 @@ RSpec.describe EnrichPushEventJob, type: :job do
           )
       end
 
-      it 'raises RateLimitExceeded for retry' do
+      it 'raises EnrichmentError for retry' do
         expect { described_class.new.perform(push_event.id) }
-          .to raise_error(GitHubApiClient::RateLimitExceeded)
+          .to raise_error(EnrichmentService::EnrichmentError)
       end
     end
   end
