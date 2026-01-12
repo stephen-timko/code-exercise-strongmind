@@ -1,160 +1,79 @@
 # Design Brief: GitHub Events Ingestion Service
 
-## The Problem We're Solving
+## The Problem
 
-This service provides visibility into GitHub activity to support analytics on repository usage and contributor behavior. The goal is a reliable data pipeline that can run unattended, handle failures gracefully, and respect GitHub's strict rate limits for unauthenticated access (60 requests/hour).
+We need to ingest GitHub's public events API and extract PushEvent data for analytics. The main constraint is GitHub's 60 requests/hour rate limit for unauthenticated access, which is pretty tight. The system needs to run unattended, handle failures gracefully, and not fall over if GitHub's API is slow or rate-limiting us.
 
-From a business perspective, this enables data-driven decisions about repository usage patterns, contributor activity, and platform adoption. The technical challenge is building something reliable enough to run in production without constant babysitting, while staying within tight API constraints.
+From a practical standpoint, this is a data pipeline - reliability and staying within limits matter more than real-time processing. The goal is getting the data ingested and stored, not building a complex real-time system.
 
-## Architecture Overview
+## Architecture
 
-The system follows a straightforward service-oriented design where each component has a single, well-defined responsibility:
+I went with a simple service-oriented approach. Each piece has one job:
 
 ```
-GitHub API → API Client → Ingestion Job → Parser → Database
-                                    ↓
-                            Enrichment Service → Database
+GitHub API → GitHubApiClient → IngestGitHubEventsJob → PushEventParser → Database
+                                                              ↓
+                                                     EnrichmentService → Database
 ```
 
-This separation makes the code easy to test, reason about, and modify. Each service can be developed and tested independently, which speeds up development and reduces bugs.
+**GitHubApiClient** handles all HTTP stuff - rate limit tracking, ETags, retries with exponential backoff. Keeps the HTTP details out of the rest of the code.
 
-**Components:**
+**IngestGitHubEventsJob** orchestrates fetching events, storing raw payloads, filtering for PushEvents, parsing, and storing. Right now it's a rake task, but easy to convert to a scheduled job later.
 
-1. **GitHubApiClient** - Handles all HTTP communication with GitHub. Tracks rate limits, manages ETags for conditional requests, and implements retry logic with exponential backoff. This encapsulation means the rest of the system doesn't need to know about rate limit headers or HTTP details.
+**PushEventParser** extracts structured fields from the JSON. Has fallbacks for missing fields.
 
-2. **IngestGitHubEventsJob** - Orchestrates the ingestion flow: fetch events, store raw payloads, filter for PushEvents, parse structured data, and store it. Runs as a rake task for now, but designed so it could easily become a scheduled job.
+**EnrichmentService** fetches actor/repo details and caches them for 24 hours. This caching is critical for staying within rate limits since we see the same actors and repos repeatedly.
 
-3. **PushEventParser** - Extracts structured fields from raw event JSON. Handles missing fields gracefully with fallbacks. This keeps parsing logic isolated from storage concerns.
+**EnrichPushEventJob** runs enrichment separately so failures don't block ingestion.
 
-4. **EnrichmentService** - Manages fetching and caching of actor and repository data. The caching is crucial for staying within rate limits - actor/repository data doesn't change often, so we cache for 24 hours.
+The separation makes testing easier - each service can be tested independently. Also makes it easier to reason about what's happening when things go wrong.
 
-5. **EnrichPushEventJob** - Processes enrichment asynchronously. Designed so enrichment failures don't block ingestion.
+## Key Tradeoffs
 
-## Data Storage Strategy
+**Polling vs Webhooks**: Went with polling. Webhooks would require authentication and setup complexity we don't need. Polling is simpler and fine for analytics where real-time isn't required. Trade-off: events arrive within an hour, not instantly. That's acceptable for this use case.
 
-I chose a dual-storage approach: raw JSONB for auditability, structured tables for efficient querying. This is a common pattern in data pipelines, and for good reason.
+**Async Enrichment**: Enrichment runs separately from ingestion. If GitHub's user/repo APIs are slow or failing, we can still ingest events. The downside is eventual consistency - PushEvents might exist without enriched data for a while. But that's better than enrichment failures blocking all ingestion.
 
-**Why both?**
+**Database Caching vs Redis**: Used PostgreSQL for caching instead of Redis. One less service to manage, no cache warming issues, survives restarts. Redis would be faster, but for data that changes infrequently, the database is fast enough and simpler to operate.
 
-The raw JSONB gives us flexibility. If we need a new field later, we can re-parse the raw payloads without re-ingesting from GitHub. It also serves as an audit trail. The structured tables (`push_events`) make queries fast - no JSON parsing needed, proper indexes, and normalized data for joins.
+**Batch vs Streaming**: Everything is batch-oriented. Simpler to build, test, and debug. For analytics, batch processing is the right default. Can always add streaming later if needed.
 
-Yes, there's some data duplication, but storage is cheap and query performance matters more for analytics workloads. The structured tables are also easier for analysts to work with - they don't need to understand JSONB queries.
+**Dual Storage**: Store raw payloads in JSONB (or S3 if enabled) plus structured tables. The raw data gives flexibility - can re-parse later if we need new fields. Structured tables make queries fast. Yes, there's duplication, but storage is cheap and query performance matters more.
 
-**Optional S3 Storage**
+## Rate Limits and Durability
 
-For production deployments with large volumes, storing raw payloads in S3 can make sense. It reduces database size and cost, and S3 is durable and compliant-friendly. The implementation is designed as a feature flag - when enabled, payloads go to S3 and the `github_events` table stores just the S3 key. When disabled (default), it uses JSONB. The code handles both paths transparently.
+GitHub's 60 requests/hour limit is the main constraint. I handle it a few ways:
 
-## Key Design Decisions
+1. **ETag support** - Conditional requests return 304 Not Modified when nothing changed. Saves requests when GitHub's event feed hasn't updated. The ETag is persisted in the database so it survives restarts.
 
-### Polling vs Webhooks
+2. **Rate limit tracking** - Monitor `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers. Log the status so you can see what's happening.
 
-I chose polling because we're using the public events API without authentication. Webhooks would require authentication and setup complexity we don't need. Polling is simpler, more predictable, and perfectly adequate for analytics workloads where real-time isn't required.
+3. **Exponential backoff** - When we hit rate limits (429 or 403 with remaining=0), retry with exponentially increasing delays. Jobs are idempotent, so retries are safe.
 
-The trade-off is we're not getting events the instant they happen, but for analytics that's fine. We get them within an hour at worst.
+4. **Caching** - Actor/repository data cached for 24 hours. Dramatically reduces API calls since we see the same actors and repos repeatedly.
 
-### Async Enrichment
+For durability: unique constraints on `event_id` and `push_id` prevent duplicates. Jobs use `find_or_initialize_by` patterns to handle races. Status tracking (`processed_at`, `enrichment_status`) lets the system resume after restarts. If a job crashes mid-run, just restart it - won't create duplicates.
 
-Enrichment runs separately from ingestion so failures don't block the main pipeline. If GitHub's user/repo APIs are slow or failing, we can still ingest events. The enrichment status tracking lets us resume later.
+The system is designed to be restart-safe. Jobs can be scheduled via cron, Kubernetes jobs, etc., and if they overlap or restart, nothing breaks.
 
-The trade-off is eventual consistency - PushEvents might exist without enriched data for a while. But this is much better than the alternative where a failing enrichment step blocks all ingestion.
+## What I Didn't Build
 
-### Database Caching vs Redis
+I kept the scope focused on ingestion and storage. Here's what I skipped and why:
 
-I used PostgreSQL for caching actor/repository data instead of Redis. This simplifies the architecture - one fewer service to manage, no cache warming issues, durable across restarts. Redis would be faster, but for this use case (caching data that changes infrequently) the database is fast enough and the operational simplicity wins.
+**Real-time Processing** - Batch is simpler and sufficient. Can add streaming later if needed, but starting with streaming adds complexity we don't need.
 
-### Batch Processing
+**Analytics Layer** - This is a data ingestion service. Analytics queries are a separate concern. The structured tables make it easy to build analytics on top.
 
-Everything is batch-oriented rather than streaming. This is simpler to build, test, and debug. For analytics workloads, batch processing is the right default. We can always add streaming later if needed, but starting with streaming adds complexity we don't need yet.
+**User-Facing API** - This is an internal data pipeline. If you need a query API, build it as a separate service that reads from the database.
 
-## Rate Limiting Strategy
+**Authentication** - Single-tenant internal service. Security can be handled at the infrastructure level (VPC, firewall rules, etc.).
 
-GitHub's 60 requests/hour limit for unauthenticated access is the main constraint. We handle this through:
+**Horizontal Scaling** - Designed for a single instance. Architecture supports scaling later (stateless jobs, shared database), but premature scaling adds complexity.
 
-1. **ETag support** - Conditional requests that return 304 Not Modified when nothing changed. This saves requests when GitHub's event feed hasn't updated.
+**Monitoring Dashboards** - Basic logging and health checks are enough. Dashboards can be added later when we understand what metrics matter.
 
-2. **Header tracking** - We monitor `X-RateLimit-Remaining` and `X-RateLimit-Reset` on every response. This lets us know when we're getting close to the limit.
+**Webhook Support** - Would require authentication. Polling is simpler and meets requirements.
 
-3. **Exponential backoff** - When we hit rate limits (429 or 403 with remaining=0), we retry with exponentially increasing delays. Jobs are designed to be idempotent, so retries are safe.
+**Historical Backfill** - Assumes starting from current events. Historical backfill would be a separate, one-time tool if needed.
 
-4. **Caching** - Actor/repository data is cached for 24 hours. This dramatically reduces API calls since we typically see the same actors and repos repeatedly.
-
-The system logs rate limit status so operators can see what's happening. In production, you'd want to alert if we're consistently hitting limits, which might indicate we need authenticated access or a different strategy.
-
-## Idempotency and Restart Safety
-
-The system is designed to be restart-safe. Unique constraints on `event_id` and `push_id` prevent duplicates. Jobs use `find_or_initialize_by` patterns to handle races safely. If a job crashes mid-run, you can just restart it - it won't create duplicates.
-
-Status tracking (`processed_at`, `enrichment_status`) lets the system resume from where it left off. Events can be in various states (pending, in_progress, completed, failed), so partial runs are handled gracefully.
-
-This idempotency is crucial for production reliability. Jobs can be scheduled via cron, Kubernetes jobs, or similar, and if they overlap or restart, nothing breaks.
-
-## What I Didn't Build (And Why)
-
-I intentionally kept the scope focused on data ingestion and storage. Here's what I left out and why:
-
-**Real-time Processing** - Batch processing is simpler and sufficient for analytics. If real-time becomes a requirement later, we can add it, but starting with streaming adds complexity we don't need.
-
-**Analytics Layer** - This is a data ingestion service. Analytics queries are a separate concern. The structured tables make it easy to build analytics on top, but that's outside this service's scope.
-
-**User-Facing API** - This is an internal data pipeline. If you need a query API, build it as a separate service that reads from the database. This keeps responsibilities clear.
-
-**Authentication** - Single-tenant internal service. Security can be handled at the infrastructure level (VPC, firewall rules, etc.). Adding auth here adds complexity without clear benefit for this use case.
-
-**Horizontal Scaling** - Designed for a single instance. The architecture supports scaling later (stateless jobs, shared database), but premature scaling adds complexity. Start simple, scale when needed.
-
-**Monitoring Dashboards** - Basic logging and health checks are enough to start. Dashboards can be added later when we understand what metrics matter. Over-instrumenting early is wasteful.
-
-**Webhook Support** - Would require authentication and webhook setup. Polling is simpler and meets current requirements.
-
-**Historical Backfill** - Assumes starting from current events. Historical backfill would be a separate, one-time migration tool if needed. Not worth building into the main pipeline.
-
-**Advanced Deduplication** - Database unique constraints handle deduplication at the scale we're targeting. More sophisticated approaches (Bloom filters, event sourcing) add complexity without clear benefit.
-
-**Config Management** - Environment variables are sufficient for now. When we need more sophisticated config (multiple environments, secret management), we can add it. But not before we need it.
-
-The principle here is YAGNI (You Aren't Gonna Need It). Build what's needed now, add complexity only when there's a clear requirement.
-
-## Testing Strategy
-
-I built a comprehensive test suite because data pipelines are hard to debug in production. The tests cover:
-
-- Unit tests for each service, model, and job
-- Integration tests for end-to-end flows
-- Edge cases: network failures, rate limits, malformed data
-- Idempotency: ensuring jobs can run multiple times safely
-
-External API calls are stubbed using WebMock, so tests run fast and reliably. FactoryBot generates realistic test data.
-
-The test suite runs in about 27 seconds with 181 examples. This fast feedback loop makes development faster and catches bugs before production.
-
-## Business Considerations
-
-From a business perspective, this design prioritizes:
-
-**Operational Simplicity** - Fewer moving parts means fewer things that can break. The architecture is straightforward enough that a new engineer can understand it quickly.
-
-**Cost Efficiency** - Using PostgreSQL for caching instead of Redis saves infrastructure cost. Batch processing instead of streaming reduces complexity and operational overhead.
-
-**Reliability** - Idempotency and restart safety mean the system can recover from failures without manual intervention. This reduces operational burden.
-
-**Time to Market** - The scope is focused on what's needed now. We can add features (streaming, dashboards, etc.) later when requirements are clearer.
-
-**Future Flexibility** - The dual-storage approach and service-oriented design make it easy to add features later without rewrites. We're not painting ourselves into corners.
-
-The goal is a system that works reliably, is easy to operate, and can evolve as requirements change. These aren't just technical decisions - they're business decisions about where to invest engineering time and infrastructure dollars.
-
-## Moving Forward
-
-If I were to extend this system, my priorities would be:
-
-1. **Monitoring and Alerting** - Add metrics (Prometheus, DataDog, etc.) and alerts for rate limit issues, enrichment failures, and data freshness.
-
-2. **Data Quality Checks** - Validate data completeness, freshness, and schema changes. Catch issues before they impact downstream analytics.
-
-3. **Performance Optimization** - As data volumes grow, optimize queries, add indexes, and consider partitioning strategies.
-
-4. **Operational Tooling** - CLI tools for manual retries, data inspection, and troubleshooting. Reduces the need for database access.
-
-5. **Schema Evolution** - Plan for how to handle schema changes as GitHub's API evolves. Version the raw payloads and handle migrations gracefully.
-
-But all of that can wait until we have real requirements and real data volumes. The current design gets us started while leaving room to grow.
+The principle here is YAGNI - build what's needed now, add complexity only when there's a clear requirement.
