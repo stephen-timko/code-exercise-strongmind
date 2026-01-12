@@ -55,7 +55,22 @@ The service caches actor and repository data for 24 hours to avoid hitting API l
 docker compose run --rm test
 ```
 
-The test suite uses RSpec and includes unit tests, integration tests, and end-to-end flows. All external API calls are stubbed using WebMock, so tests run fast and reliably.
+The test suite uses RSpec and includes:
+
+- **Unit tests** - Services, models, and jobs
+- **Integration tests** - End-to-end ingestion and enrichment flows
+- **Controller tests** - Health endpoint
+- **Edge cases** - Rate limits, network errors, malformed data, idempotency
+
+All external API calls are stubbed using WebMock, so tests run fast and reliably without hitting GitHub's API. The suite includes 194 examples covering:
+
+- GitHub API client (rate limits, ETags, retries, errors)
+- Event parsing (valid/invalid data, missing fields, fallbacks)
+- Ingestion job (idempotency, filtering, 304 Not Modified)
+- Enrichment service (caching, failures, partial enrichment)
+- Models (validations, associations, scopes, state transitions)
+- Object storage (S3 integration, JSONB fallback)
+- End-to-end flows (full pipeline from ingestion to enrichment)
 
 ## How to Verify It's Working
 
